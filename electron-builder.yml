@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: auto-reply
+productName: 多小媒
 directories:
   buildResources: build
 files:
@@ -12,12 +12,21 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: auto-reply
+  executableName: 多小媒
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
   shortcutName: ${productName}
+  artifactName: ${name}-${version}-setup.${ext}
   uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
+  language: 2052 # 简体中文
+  runAfterFinish: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

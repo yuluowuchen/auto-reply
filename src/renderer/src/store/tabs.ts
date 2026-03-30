@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type TabType = 'app' | 'web'
+export type TabType = 'app' | 'web' | 'chat'
 
 export interface Tab {
   id: string

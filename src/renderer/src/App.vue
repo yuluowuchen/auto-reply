@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { HomeFilled, UploadFilled, UserFilled, Expand, Fold, Menu } from '@element-plus/icons-vue'
+import { HomeFilled,  UserFilled,  Menu, SwitchButton } from '@element-plus/icons-vue'
 import { useTabsStore } from './store/tabs'
 import { storeToRefs } from 'pinia'
 import WebView from './components/WebView.vue'
+import ChatWebView from './components/ChatWebView.vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
@@ -13,6 +15,9 @@ const { activeTabId, tabsList } = storeToRefs(tabsStore)
 
 // 菜单折叠状态
 const isCollapse = ref(true)
+
+// 是否显示布局（登录页不显示）
+const showLayout = computed(() => route.name !== 'Login')
 
 // 左侧菜单当前激活项 (仅在主应用标签页有效)
 const activeMenu = computed(() => route.path)
@@ -34,14 +39,42 @@ const handleTabRemove = (name: string) => {
 
 // 侧边栏菜单点击
 const handleMenuSelect = (index: string) => {
+  if (index === 'logout') {
+    handleLogout()
+    return
+  }
   // 切换到主应用标签
   tabsStore.activeTabId = 'app_main'
   router.push(index)
 }
+
+// 退出登录
+const handleLogout = () => {
+  ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      // 调用后端退出接口
+      await window.api.verify.logout()
+    } catch (e) {
+      console.error('退出登录异常:', e)
+    } finally {
+      // 清除本地登录状态
+      localStorage.removeItem('auth_token')
+      ElMessage.success('已安全退出')
+      router.push('/login')
+    }
+  }).catch(() => {})
+}
 </script>
 
 <template>
-  <el-container class="layout-container">
+  <div v-if="!showLayout" class="login-layout">
+    <router-view />
+  </div>
+  <el-container v-else class="layout-container">
     <!-- 左侧导航栏 -->
     <el-aside :width="isCollapse ? '70px' : '180px'" class="aside-menu" :class="{ 'is-collapsed': isCollapse }">
       <div class="logo-container">
@@ -56,10 +89,10 @@ const handleMenuSelect = (index: string) => {
           <el-icon><HomeFilled /></el-icon>
           <span class="menu-title">首页</span>
         </el-menu-item>
-        <el-menu-item index="/publish">
+        <!-- <el-menu-item index="/publish">
           <el-icon><UploadFilled /></el-icon>
           <span class="menu-title">发布</span>
-        </el-menu-item>
+        </el-menu-item> -->
         <el-menu-item index="/accounts">
           <el-icon><UserFilled /></el-icon>
           <span class="menu-title">账号</span>
@@ -67,6 +100,13 @@ const handleMenuSelect = (index: string) => {
         <el-menu-item index="/features">
           <el-icon><Menu /></el-icon>
           <span class="menu-title">功能</span>
+        </el-menu-item>
+        
+        <div class="menu-spacer"></div>
+
+        <el-menu-item index="logout" class="logout-item">
+          <el-icon><SwitchButton /></el-icon>
+          <span class="menu-title">退出登录</span>
         </el-menu-item>
       </el-menu>
 
@@ -114,6 +154,9 @@ const handleMenuSelect = (index: string) => {
           <div v-if="tab.type === 'web'" v-show="activeTabId === tab.id" class="web-content-wrapper">
             <WebView :id="tab.id" :src="tab.url!" :partition="tab.partition" />
           </div>
+          <div v-if="tab.type === 'chat'" v-show="activeTabId === tab.id" class="web-content-wrapper">
+            <ChatWebView :id="tab.id" :src="tab.url!" :partition="tab.partition" />
+          </div>
         </template>
       </el-main>
     </el-container>
@@ -127,6 +170,11 @@ html, body, #app {
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+.login-layout {
+  height: 100vh;
+  width: 100vw;
 }
 
 .layout-container {
@@ -158,7 +206,21 @@ html, body, #app {
 
 .el-menu-vertical {
   border-right: none !important;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.menu-spacer {
   flex: 1;
+}
+
+.logout-item {
+  color: #f56c6c !important;
+}
+
+.logout-item:hover {
+  background-color: #fef0f0 !important;
 }
 
 /* 展开状态样式 (默认) */
@@ -197,13 +259,8 @@ html, body, #app {
 }
 
 .aside-menu.is-collapsed .menu-title {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
-}
-
-.el-menu-item.is-active {
-  background-color: #ecf5ff;
-  color: #409eff;
 }
 
 /* 底部折叠按钮 */
@@ -215,52 +272,74 @@ html, body, #app {
   cursor: pointer;
   border-top: 1px solid #f0f0f0;
   color: #909399;
-  transition: color 0.3s;
 }
 
 .collapse-btn:hover {
   color: #409eff;
+  background-color: #f5f7fa;
 }
 
-/* 顶部标签页样式 */
+/* 顶部标签栏 */
 .tabs-header {
   background-color: #ffffff;
-  padding: 0;
+  padding: 0 10px;
   border-bottom: 1px solid #e6e6e6;
+  display: flex;
+  align-items: center;
 }
 
-.el-tabs--card > .el-tabs__header {
-  border-bottom: none !important;
-  margin: 0 !important;
+.demo-tabs {
+  width: 100%;
 }
 
-.el-tabs__item {
-  height: 40px !important;
-  line-height: 40px !important;
-  font-size: 13px;
+.demo-tabs :deep(.el-tabs__header) {
+  margin: 0;
+  border-bottom: none;
 }
 
-/* 内容区域样式 */
-.content-main {
+.demo-tabs :deep(.el-tabs__nav) {
+  border: none !important;
+}
+
+.demo-tabs :deep(.el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+  border: 1px solid #e6e6e6 !important;
+  border-radius: 4px;
+  margin-right: 5px;
+  background-color: #f5f7fa;
+  font-size: 12px;
+}
+
+.demo-tabs :deep(.el-tabs__item.is-active) {
   background-color: #ffffff;
-  margin: 10px;
-  border-radius: 8px;
-  padding: 0 !important;
-  overflow: hidden; /* 防止 webview 溢出 */
-  position: relative;
+  border-color: #409eff !important;
+  color: #409eff;
 }
 
-.app-content-wrapper, .web-content-wrapper {
+/* 内容区域 */
+.content-main {
+  padding: 0 !important;
+  position: relative;
+  background-color: #ffffff;
+}
+
+.app-content-wrapper,
+.web-content-wrapper {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto;
 }
 
-.app-content-wrapper {
-  overflow-y: auto;
+.web-content-wrapper {
+  overflow: hidden;
+}
+
+.el-menu-item.is-active {
+  background-color: #ecf5ff;
+  color: #409eff;
 }
 </style>

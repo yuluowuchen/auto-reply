@@ -1,8 +1,12 @@
 import { app, session, BrowserWindow, ipcMain, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { setupAccountManager, saveAccount, Account } from './account_manager'
+import { setupPolicyManager } from './policy_manager'
+import { setupVerifyManager } from './verify_manager'
+import Verify from './feiniao-api/verify'
 import { automationService } from './automation_service'
 
 // ✅ 引入 Puppeteer Stealth 相关依赖
@@ -157,12 +161,30 @@ async function initPuppeteer() {
           if (url.includes('creator.douyin.com')) {
             monitorDouyinAccount(page)
           }
+          // 检测到聊天页面，执行接管逻辑
+          if (url.includes('www.douyin.com/chat')) {
+            // 💡 方案一：通过 URL 参数直接获取 accountId (最稳健)
+            const accountId = new URL(url).searchParams.get('accountId') || 'unknown'
+            
+            // 💡 方案二：通过 targetId 桥接到 Electron 的 WebContents (深度接管)
+            // const targetId = (target as any)._targetId
+            // const wc = webContents.fromDevToolsTargetId(targetId)
+            // if (wc) {
+            //   console.log(`🚀 成功桥接到 WebContents, 分区: ${wc.session.getStoragePath()}`)
+            // }
+            
+            automationService.takeoverPage(page, accountId)
+          }
         })
 
         // 初始页面加载时也要检查 (防止 targetcreated 在 load 之后触发)
         const currentUrl = page.url()
         if (currentUrl.includes('creator.douyin.com')) {
           monitorDouyinAccount(page)
+        }
+        if (currentUrl.includes('www.douyin.com/chat')) {
+          const accountId = new URL(currentUrl).searchParams.get('accountId') || 'unknown'
+          automationService.takeoverPage(page, accountId)
         }
 
       } catch (err) {
@@ -242,6 +264,16 @@ app.whenReady().then(() => {
     return automationService.startAutoReply(policy)
   })
 
+  // 更新自动化配置
+  ipcMain.handle('update-auto-reply-config', (_, { pageId, config }) => {
+    return automationService.updatePageConfig(pageId, config)
+  })
+
+  // 手动发送话术
+  ipcMain.handle('send-manual-script', async (_, { pageId, content }) => {
+    return automationService.sendManualScript(pageId, content)
+  })
+
   // 清理分区数据(没啥用，起不到作用可以删除)
   ipcMain.handle('clear-partition', async (_, partition: string) => {
     if (!partition) return
@@ -250,12 +282,55 @@ app.whenReady().then(() => {
     return true
   })
 
+  // 打开外部链接
+  ipcMain.on('open-external', (_, url: string) => {
+    shell.openExternal(url)
+  })
+
+  // 在程序内部新窗口打开链接 (常用于支付页面)
+  ipcMain.on('open-internal-window', (_, url: string) => {
+    const payWin = new BrowserWindow({
+      width: 1000,
+      height: 800,
+      // title: '账户充值',
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    })
+    payWin.loadURL(url)
+  })
+
+  // 初始化验证管理器
+  setupVerifyManager()
+
   // 初始化账号管理器
   setupAccountManager()
+  
+  // 初始化策略管理器
+  setupPolicyManager()
 
-  // 创建窗口并初始化与内置 Chromium 的连接
-  createWindow()
-  setTimeout(initPuppeteer, 2000)
+  // 自动更新检查
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify()
+  }
+
+  // 初始化验证系统 (获取 Token)
+  Verify.init().then((res) => {
+    if (res.success) {
+      console.log('✅ 验证系统初始化成功')
+    } else {
+      console.error('❌ 验证系统初始化失败:', res.error)
+    }
+    // 获取 Token 后创建窗口并跳转到登录页面 (路由已配置默认跳转 /login)
+    createWindow()
+    setTimeout(initPuppeteer, 2000)
+  }).catch(err => {
+    console.error('❌ 验证系统初始化异常:', err)
+    createWindow() // 即使失败也尝试开启窗口，由前端显示错误
+    setTimeout(initPuppeteer, 2000)
+  })
 
   // Webview 安全策略配置
   app.on('web-contents-created', (_, contents) => {

@@ -28,6 +28,9 @@
           </div>
         </div>
         <div class="actions">
+          <el-button type="primary" size="small" @click.stop="handleOpenChat(account)">
+            私信设置
+          </el-button>
           <el-button type="danger" size="small" @click.stop="handleDelete(account.id)">
             删除
           </el-button>
@@ -93,6 +96,17 @@ const handleOpenAccount = (account: Account) => {
     title: `${account.nickname} - 抖音`,
     type: 'web',
     url: 'https://creator.douyin.com/creator-micro/home',
+    partition: `${account.partition}`
+  })
+}
+
+// 打开私信设置标签页
+const handleOpenChat = (account: Account) => {
+  tabsStore.addTab({
+    id: `chat_settings_${account.id}`,
+    title: `私信-${account.nickname}`,
+    type: 'chat',
+    url: `https://www.douyin.com/chat?isPopup=1&accountId=${account.id}`,
     partition: `${account.partition}`
   })
 }

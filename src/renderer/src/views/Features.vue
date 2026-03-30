@@ -8,7 +8,7 @@
 
     <div class="feature-grid">
       <!-- AI 智能接待 -->
-      <el-card class="feature-card" shadow="hover">
+      <el-card class="feature-card" shadow="hover" @click="goToAiReply">
         <div class="card-header">
           <el-icon class="feature-icon ai-icon"><ChatLineRound /></el-icon>
           <el-badge value="NEW" class="new-badge" />
@@ -20,7 +20,7 @@
       </el-card>
 
       <!-- 私信自动回复 -->
-      <el-card class="feature-card" shadow="hover" @click="goToAutoReply">
+      <!-- <el-card class="feature-card" shadow="hover" @click="goToAutoReply">
         <div class="card-header">
           <el-icon class="feature-icon reply-icon"><Promotion /></el-icon>
         </div>
@@ -28,7 +28,7 @@
           <h3 class="feature-name">私信自动回复</h3>
           <p class="feature-desc">暂无策略</p>
         </div>
-      </el-card>
+      </el-card> -->
     </div>
   </div>
 </template>
@@ -37,12 +37,30 @@
 import { ref, onMounted } from 'vue'
 import { ChatLineRound, Promotion } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
+
 
 const router = useRouter()
 const hasDouyinLogo = ref(false)
 
 const goToAutoReply = () => {
+  //提示开发中
+ ElMessage({
+    message: '私信自动回复功能暂未开发',
+    type: 'warning',
+  })
   router.push('/auto-reply')
+}
+
+// 跳转 AI 智能接待页面
+const goToAiReply = () => {
+  //提示开发中
+ ElMessage({
+    message: 'AI 智能接待功能开发中',
+    type: 'warning',
+  })
+  // router.push('/ai-reply')
 }
 
 // 实际项目中可以检查资源是否存在

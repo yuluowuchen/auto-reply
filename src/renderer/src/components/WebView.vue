@@ -17,6 +17,7 @@
       :partition="partition"
       class="webview"
       allowpopups
+      webpreferences="contextIsolation=yes, backgroundThrottling=false"
     ></webview>
   </div>
 </template>

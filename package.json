@@ -1,9 +1,9 @@
 {
   "name": "auto-reply",
   "version": "1.0.0",
-  "description": "An Electron application with Vue and TypeScript",
+  "description": "多媒体自动化RPA软件",
   "main": "./out/main/index.js",
-  "author": "example.com",
+  "author": "多小媒",
   "homepage": "https://electron-vite.org",
   "scripts": {
     "format": "prettier --write .",
@@ -24,6 +24,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@element-plus/icons-vue": "^2.3.2",
+    "axios": "^1.13.6",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",
     "element-plus": "^2.13.5",

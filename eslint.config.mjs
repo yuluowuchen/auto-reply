@@ -24,6 +24,10 @@ export default defineConfig(
   {
     files: ['**/*.{ts,mts,tsx,vue}'],
     rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      'vue/no-unused-vars': 'off',
+      'vue/no-unused-components': 'off',
       'vue/require-default-prop': 'off',
       'vue/multi-word-component-names': 'off',
       'vue/block-lang': [

@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, session } from 'electron'
+import { ipcMain } from 'electron'
 import Store from 'electron-store'
 
 // 解决 electron-store 在某些环境下导入为对象的问题
@@ -64,11 +64,5 @@ export function setupAccountManager() {
   )
 
   // 开启调试器拦截网络请求
-  ipcMain.on('start-intercept', (event, { partition, urlPattern }) => {
-    const ses = session.fromPartition(partition)
-    
-    // 我们需要通过 webContents 来 attach debugger
-    // 由于 webview 在渲染进程中，主进程需要找到对应的 webContents
-    // 这里简单处理：监听所有 web-contents-created
-  })
+  // ipcMain.on('start-intercept', (_event, { partition }) 
 }

@@ -32,3 +32,10 @@ $ pnpm build:mac
 # For Linux
 $ pnpm build:linux
 ```
+
+```bash
+# Git Commit
+$ git add .
+$ git commit -m "Add feature:`<feature>`"
+
+```

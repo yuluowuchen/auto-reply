@@ -226,6 +226,9 @@ interface Account {
   partition: string
 }
 
+import { useTabsStore } from '../store/tabs'
+
+const tabsStore = useTabsStore()
 const router = useRouter()
 
 // 账号选择器状态
@@ -309,13 +312,37 @@ const handleSubmit = async () => {
 
   try {
     console.log('提交表单:', form)
-    await window.api.startAutoReply(JSON.parse(JSON.stringify(form)))
-    ElMessage.success('策略创建成功并已启动')
+    
+    // 1. 保存策略到主进程
+    const policyData = {
+      ...JSON.parse(JSON.stringify(form)),
+      id: Date.now().toString(),
+      createdAt: Date.now()
+    }
+    await window.api.savePolicy(policyData)
+
+    // 2. 只有当启用状态为 true 时，才为每个选中的账号打开聊天标签页
+    if (form.enabled) {
+      form.selectedAccounts.forEach((account) => {
+        tabsStore.addTab({
+          id: `chat_${account.id}`,
+          title: `聊天-${account.nickname}`,
+          type: 'web',
+          url: `https://www.douyin.com/chat?isPopup=1&accountId=${account.id}`,
+          partition: account.partition
+        })
+      })
+      ElMessage.success('策略已保存并启动监控')
+    } else {
+      ElMessage.success('策略已保存')
+    }
+
     router.push('/auto-reply')
   } catch (error) {
     console.error('启动策略失败:', error)
     ElMessage.error('启动策略失败')
   }
+  return '成功'
 }
 </script>
 

@@ -19,13 +19,27 @@
     <div class="table-wrapper">
       <el-table :data="tableData" style="width: 100%" class="custom-table">
         <el-table-column prop="name" label="策略名称" />
-        <el-table-column prop="rule" label="触发规则" />
-        <el-table-column prop="accountCount" label="关联数" align="center" />
-        <el-table-column prop="replyCount" label="回复数" align="center" />
+        <el-table-column label="触发规则">
+          <template #default="scope">
+            {{ scope.row.triggerRule === 'keyword' ? '关键字匹配' : '即刻回复' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="关联账号数" align="center">
+          <template #default="scope">
+            {{ scope.row.selectedAccounts?.length || 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" align="center">
+          <template #default="scope">
+            <el-tag :type="scope.row.enabled ? 'success' : 'info'">
+              {{ scope.row.enabled ? '已启用' : '已关闭' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="120" align="center">
           <template #default="scope">
-            <el-button link type="primary">编辑</el-button>
-            <el-button link type="danger">删除</el-button>
+            <el-button link type="primary" @click="handleEdit(scope.row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(scope.row)">删除</el-button>
           </template>
         </el-table-column>
         
@@ -41,12 +55,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Back, Plus } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
-const tableData = ref([])
+const tableData = ref<any[]>([])
+
+const fetchPolicies = async () => {
+  try {
+    tableData.value = await window.api.getPolicies()
+  } catch (error) {
+    console.error('获取策略失败:', error)
+  }
+}
+
+onMounted(() => {
+  fetchPolicies()
+})
 
 const goBack = () => {
   router.push('/features')
@@ -54,6 +81,30 @@ const goBack = () => {
 
 const handleCreate = () => {
   router.push('/create-auto-reply')
+}
+
+const handleEdit = (row: any) => {
+  // 目前先跳转到创建页，实际可以带上 ID 进行编辑
+  router.push({
+    path: '/create-auto-reply',
+    query: { id: row.id }
+  })
+}
+
+const handleDelete = (row: any) => {
+  ElMessageBox.confirm(`确定要删除策略 "${row.name}" 吗？`, '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await window.api.deletePolicy(row.id)
+      ElMessage.success('删除成功')
+      fetchPolicies()
+    } catch (error) {
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {})
 }
 </script>
 

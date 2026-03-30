@@ -42,8 +42,35 @@ const api = {
   saveAccount: (data: any) => ipcRenderer.invoke('save-account', data),
   clearPartition: (partition: string) => ipcRenderer.invoke('clear-partition', partition),
   startAutoReply: (policy: any) => ipcRenderer.invoke('start-auto-reply', policy),
+  getPolicies: () => ipcRenderer.invoke('get-policies'),
+  savePolicy: (policy: any) => ipcRenderer.invoke('save-policy', policy),
+  deletePolicy: (id: string) => ipcRenderer.invoke('delete-policy', id),
+  updateAutoReplyConfig: (pageId: string, config: any) => ipcRenderer.invoke('update-auto-reply-config', { pageId, config }),
+  sendManualScript: (pageId: string, content: string) => ipcRenderer.invoke('send-manual-script', { pageId, content }),
   onDouyinLoginSuccess: (callback: any) =>
-    ipcRenderer.on('douyin-login-success', (_, data) => callback(data))
+    ipcRenderer.on('douyin-login-success', (_, data) => callback(data)),
+
+  // 验证相关 API
+  verify: {
+    init: () => ipcRenderer.invoke('verify-init'),
+    login: (data: any) => ipcRenderer.invoke('verify-login', data),
+    register: (data: any) => ipcRenderer.invoke('verify-register', data),
+    getUserInfo: () => ipcRenderer.invoke('verify-get-user-info'),
+    refreshToken: () => ipcRenderer.invoke('verify-refresh-token'),
+    recharge: (data: any) => ipcRenderer.invoke('verify-recharge', data),
+    unbind: (data: any) => ipcRenderer.invoke('verify-unbind', data),
+    getNotice: () => ipcRenderer.invoke('verify-get-notice'),
+    getAppInfo: () => ipcRenderer.invoke('verify-get-app-info'),
+    getAppUserInfo: () => ipcRenderer.invoke('verify-get-app-user-info'),
+    getVipTime: () => ipcRenderer.invoke('verify-get-vip-time'),
+    getUserRmb: () => ipcRenderer.invoke('verify-get-user-rmb'),
+    getVipNumber: () => ipcRenderer.invoke('verify-get-vip-number'),
+    logout: () => ipcRenderer.invoke('verify-logout'),
+    checkLogin: () => ipcRenderer.invoke('verify-check-login'),
+    checkUpdate: () => ipcRenderer.invoke('verify-check-update'),
+    getAppUpdateJson: () => ipcRenderer.invoke('verify-get-app-update-json'),
+    payKaUsa: (data: any) => ipcRenderer.invoke('verify-pay-ka-usa', data)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
