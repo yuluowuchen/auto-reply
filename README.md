@@ -38,4 +38,7 @@ $ pnpm build:linux
 $ git add .
 $ git commit -m "Add feature:`<feature>`"
 
+# Git Push
+$ git push
+
 ```

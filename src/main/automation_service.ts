@@ -11,6 +11,8 @@ export class AutomationService {
   private activeBrowsers: Map<string, Browser> = new Map()
   private pageConfigs: Map<string, any> = new Map()
   private activePages: Map<string, Page> = new Map()
+  private targetSessions: Map<string, any> = new Map()
+  private monitoredPages: Set<Page> = new Set()
   
   // 消息去重集合 (accountId -> Set<messageId>)
   private processedMessages: Map<string, Set<string>> = new Map()
@@ -26,15 +28,43 @@ export class AutomationService {
   }
 
   /**
+   * 预挂载 CDP 监听器，确保在页面加载前就已经启用 Network 域
+   */
+  async prepareTarget(target: any) {
+    const targetId = (target as any)._targetId
+    if (this.targetSessions.has(targetId)) return
+
+    try {
+      const client = await target.createCDPSession()
+      await client.send('Network.enable')
+      this.targetSessions.set(targetId, client)
+      console.log(`[CDP] 目标 ${targetId} 已预挂载并启用网络监控`)
+    } catch (err) {
+      console.error(`[CDP] 预挂载失败:`, err)
+    }
+  }
+
+  /**
    * 接管已存在的页面（如 WebView）并启动自动回复逻辑
    */
   async takeoverPage(page: Page, accountId: string) {
+    if (this.monitoredPages.has(page)) return
+    this.monitoredPages.add(page)
+    
     console.log(`正在接管账号 ${accountId} 的页面进行自动化...`)
     this.activePages.set(`chat_settings_${accountId}`, page)
 
-    // 监听 WSS
+    // 监听 WSS (会复用 prepareTarget 中创建的 session)
     await this.setupWssListener(page, accountId)
     console.log(`页面 ${accountId} 的 WSS 监听已启动`)
+    
+    // 监听页面关闭以清理状态
+    page.once('close', () => {
+      this.monitoredPages.delete(page)
+      this.activePages.delete(`chat_settings_${accountId}`)
+      const targetId = (page.target() as any)._targetId
+      this.targetSessions.delete(targetId)
+    })
   }
 
   /**
@@ -92,8 +122,16 @@ export class AutomationService {
    * 设置 WSS 监听器
    */
   private async setupWssListener(page: Page, accountId: string) {
-    const client = await page.target().createCDPSession()
-    await client.send('Network.enable')
+    const target = page.target()
+    const targetId = (target as any)._targetId
+    
+    // 复用已预挂载的 session，如果不存在则新建
+    let client = this.targetSessions.get(targetId)
+    if (!client) {
+      client = await target.createCDPSession()
+      await client.send('Network.enable')
+      this.targetSessions.set(targetId, client)
+    }
 
     client.on('Network.webSocketCreated', ({ url }) => {
       if (url.includes('frontier-im.douyin.com/ws/v2')) {
@@ -103,12 +141,24 @@ export class AutomationService {
 
     client.on('Network.webSocketFrameReceived', async ({ response }) => {
       try {
-        const payload = Buffer.from(response.payloadData, 'base64')
-
-        // 1. 过滤心跳包 "hi"
-        if (payload.toString('utf-8').trim() === 'hi') {
+        const { opcode, payloadData } = response
+        
+        // 1. 过滤心跳包 (Text 帧且内容为 "hi")
+        if (opcode === 1 && payloadData.trim() === 'hi') {
           return
         }
+
+        // 2. 只有 Binary 帧 (opcode === 2) 才是我们关心的 IM 消息
+        // 如果是 Text 帧但不是 hi，也先记录下
+        if (opcode !== 2) {
+          if (opcode === 1) {
+             console.log(`[WSS Text] 账号: ${accountId} | 内容: ${payloadData}`)
+          }
+          return
+        }
+        
+        // Binary 帧在 CDP 中以 base64 编码
+        const payload = Buffer.from(payloadData, 'base64')       
 
         // 2. 获取当前页面的最新配置
         const pageId = `chat_settings_${accountId}`
@@ -119,6 +169,14 @@ export class AutomationService {
 
         // 3. 解析消息
         const decoded = this.decodeRawProtobuf(payload)
+
+        // 其他消息类型 text/json
+        const type2 = String(this.findFieldPath(decoded, [7]) || '')
+        const messageContent = String(this.findFieldPath(decoded, [8]) || '')
+        if (type2 === 'text/json') {
+          console.log('消息内容:', messageContent)
+          return
+        }
 
         // 3. 提取字段并确保转换为字符串以防报错
         const messageType = String(this.findFieldPath(decoded, [8, 6, 500, 5, 2]) || '')

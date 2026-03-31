@@ -1,4 +1,4 @@
-import { app, session, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, session, BrowserWindow, ipcMain, shell, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -8,6 +8,7 @@ import { setupPolicyManager } from './policy_manager'
 import { setupVerifyManager } from './verify_manager'
 import Verify from './feiniao-api/verify'
 import { automationService } from './automation_service'
+import net from 'net'
 
 // ✅ 引入 Puppeteer Stealth 相关依赖
 import puppeteer from 'puppeteer-extra'
@@ -18,15 +19,38 @@ import type { Browser, Page } from 'puppeteer-core'
 puppeteer.use(StealthPlugin())
 
 // --- 全局配置 ---
-const REMOTE_DEBUG_PORT = 9222
+let REMOTE_DEBUG_PORT = 9222
 const CUSTOM_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36'
 let electronPuppeteerBrowser: Browser | null = null
+let isReconnecting = false
+
+/**
+ * 动态查找可用端口
+ */
+async function findFreePort(startPort: number): Promise<number> {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.listen(startPort, '127.0.0.1', () => {
+      const port = (server.address() as net.AddressInfo).port
+      server.close(() => resolve(port))
+    })
+    server.on('error', () => {
+      resolve(findFreePort(startPort + 1))
+    })
+  })
+}
 
 // --- 启动参数配置 ---
-// 1. 开启远程调试端口，这是 Puppeteer 接管 Electron 的关键
-app.commandLine.appendSwitch('remote-debugging-port', REMOTE_DEBUG_PORT.toString())
-// 2. 禁用自动化受控特征，防止被网站识别
-app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+// 初始时先不 append，在 app.ready 之前动态计算
+async function configureDebugPort() {
+  REMOTE_DEBUG_PORT = await findFreePort(9222)
+  console.log(`🚀 动态分配远程调试端口: ${REMOTE_DEBUG_PORT}`)
+  app.commandLine.appendSwitch('remote-debugging-port', REMOTE_DEBUG_PORT.toString())
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+}
+
+// 在 app 准备好之前调用
+configureDebugPort()
 
 // --- 全局状态 ---
 const monitoringPages = new WeakSet<Page>()
@@ -130,14 +154,24 @@ async function monitorDouyinAccount(page: Page) {
  * 初始化 Puppeteer 并连接到 Electron 内部 Chromium
  */
 async function initPuppeteer() {
-  if (electronPuppeteerBrowser) return electronPuppeteerBrowser
+  if (electronPuppeteerBrowser?.isConnected()) return electronPuppeteerBrowser
+  if (isReconnecting) return null
+  isReconnecting = true
 
   try {
+    console.log(`正在尝试连接 Puppeteer 到端口 ${REMOTE_DEBUG_PORT}...`)
     // 通过 CDP 协议连接到当前运行的 Electron 实例
     electronPuppeteerBrowser = (await puppeteer.connect({
       browserURL: `http://127.0.0.1:${REMOTE_DEBUG_PORT}`,
       defaultViewport: null
     })) as unknown as Browser
+
+    // 监听断开连接事件 (如休眠、崩溃)
+    electronPuppeteerBrowser.on('disconnected', () => {
+      console.warn('⚠️ Puppeteer 连接已断开，准备自动重连...')
+      electronPuppeteerBrowser = null
+      setTimeout(initPuppeteer, 5000)
+    })
 
     // ✅ 核心：自动接管所有新创建的窗口和 Webview
     electronPuppeteerBrowser.on('targetcreated', async (target) => {
@@ -145,47 +179,37 @@ async function initPuppeteer() {
       if (type !== 'page' && type !== 'webview') return
 
       try {
+        // 🚀 极致优化：立即进行预挂载，确保在任何网络请求发生前启用 CDP
+        automationService.prepareTarget(target)
+        
         const page = await target.page()
         if (!page) return
 
         // 🛡️ 注入 Stealth UA (非阻塞)
         page.setUserAgent(CUSTOM_USER_AGENT).catch(() => {})
-        // const userAgent = await target.browser() 
-
         
-        console.log(`🛡️ Puppeteer 已接管新 ${type}`)
+        console.log(`🛡️ Puppeteer 已捕获新 ${type} 并预挂载 CDP`)
 
-        // 如果访问的是抖音域名，则开启账号监控逻辑
-        page.on('load', () => {
-          const url = page.url()
+        // 接管逻辑改为更早触发
+        const handleNavigation = (url: string) => {
           if (url.includes('creator.douyin.com')) {
             monitorDouyinAccount(page)
           }
-          // 检测到聊天页面，执行接管逻辑
           if (url.includes('www.douyin.com/chat')) {
-            // 💡 方案一：通过 URL 参数直接获取 accountId (最稳健)
             const accountId = new URL(url).searchParams.get('accountId') || 'unknown'
-            
-            // 💡 方案二：通过 targetId 桥接到 Electron 的 WebContents (深度接管)
-            // const targetId = (target as any)._targetId
-            // const wc = webContents.fromDevToolsTargetId(targetId)
-            // if (wc) {
-            //   console.log(`🚀 成功桥接到 WebContents, 分区: ${wc.session.getStoragePath()}`)
-            // }
-            
             automationService.takeoverPage(page, accountId)
           }
-        })
+        }
 
-        // 初始页面加载时也要检查 (防止 targetcreated 在 load 之后触发)
-        const currentUrl = page.url()
-        if (currentUrl.includes('creator.douyin.com')) {
-          monitorDouyinAccount(page)
-        }
-        if (currentUrl.includes('www.douyin.com/chat')) {
-          const accountId = new URL(currentUrl).searchParams.get('accountId') || 'unknown'
-          automationService.takeoverPage(page, accountId)
-        }
+        // 1. 立即检查
+        handleNavigation(page.url())
+
+        // 2. 监听后续导航
+        page.on('framenavigated', (frame) => {
+          if (frame === page.mainFrame()) {
+            handleNavigation(frame.url())
+          }
+        })
 
       } catch (err) {
         console.error('❌ 处理新 Target 时出错:', err)
@@ -193,10 +217,12 @@ async function initPuppeteer() {
     })
 
     console.log('✅ Puppeteer Stealth 已全局就绪，所有窗口已被监控')
+    isReconnecting = false
     return electronPuppeteerBrowser
   } catch (error) {
-    console.error('❌ Puppeteer 连接失败，1秒后重试:', (error as Error).message)
-    setTimeout(initPuppeteer, 1000)
+    console.error('❌ Puppeteer 连接失败，5秒后重试:', (error as Error).message)
+    isReconnecting = false
+    setTimeout(initPuppeteer, 5000)
     return null
   }
 }
@@ -292,8 +318,8 @@ app.whenReady().then(() => {
     const payWin = new BrowserWindow({
       width: 1000,
       height: 800,
-      // title: '账户充值',
       autoHideMenuBar: true,
+      title: '抖音助手',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true
@@ -315,6 +341,14 @@ app.whenReady().then(() => {
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify()
   }
+
+  // 监听系统休眠和唤醒
+  powerMonitor.on('resume', () => {
+    console.log('🛌 系统从休眠中唤醒，检查 Puppeteer 连接状态...')
+    if (!electronPuppeteerBrowser || !electronPuppeteerBrowser.isConnected()) {
+      initPuppeteer()
+    }
+  })
 
   // 初始化验证系统 (获取 Token)
   Verify.init().then((res) => {
@@ -343,7 +377,15 @@ app.whenReady().then(() => {
           return { action: 'deny' }
         }
         console.log('✅ 允许新窗口打开:', details.url)
-        return { action: 'allow' }
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 1000,
+            height: 800,
+            autoHideMenuBar: true,
+            title: '抖音助手'
+          }
+        }
       })
 
       contents.on('will-navigate', (event, url) => {
